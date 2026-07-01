@@ -107,7 +107,7 @@ jobs:
 
       - name: Verify memory.py in remote package
         run: |
-          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" bash <<'ENDSSH'
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" bash <<ENDSSH
             set -euo pipefail
             if [ ! -f "${REMOTE_TMP_DIR}/${APP_NAME}/rexa/memory.py" ]; then
               echo "[deploy] extracted package is missing rexa/memory.py"
