@@ -1,0 +1,169 @@
+name: Deploy REXA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REMOTE_USER: ubuntu
+  REMOTE_HOST: 52.78.92.214
+  REMOTE_BASE_DIR: /home/ubuntu/kakao
+  APP_NAME: rexa_v1.1
+  REMOTE_DB_HOST: rexa.cb2ek4cak9id.ap-northeast-2.rds.amazonaws.com
+  REMOTE_BOS_SERVER_BASE_URL: http://localhost:10000/api
+  REMOTE_REDIS_URL: rediss://rexa-cache-u4blac.serverless.apn2.cache.amazonaws.com:6379
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rexa_v1.1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: rexa_v1.1
+
+      - name: Write .env
+        run: |
+          cat > .env <<'EOF'
+          LLM_PRIMARY_PROVIDER=claude
+          LLM_FALLBACK_PROVIDER=openai
+          LLM_TERTIARY_PROVIDER=gemini
+
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          KAKAO_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}
+
+          REXA_DB_HOST=localhost
+          REXA_DB_PORT=5432
+          REXA_DB_NAME=rexa
+          REXA_DB_USER=${{ secrets.REXA_DB_USER }}
+          REXA_DB_PASSWORD=${{ secrets.REXA_DB_PASSWORD }}
+
+          BOS_SERVER_BASE_URL=http://52.78.92.214/api
+          COMMERCIAL_AREA_TOP_K=5
+          COMMERCIAL_AREA_TIMEOUT_SECONDS=20
+
+          REDIS_URL=localhost:6379
+          EOF
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.REMOTE_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Verify local rexa/memory.py exists
+        run: |
+          if [ ! -f "rexa/memory.py" ]; then
+            echo "[deploy] rexa/memory.py not found"
+            exit 1
+          fi
+
+      - name: Create remote tmp dir
+        run: |
+          TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+          echo "TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
+          echo "REMOTE_TMP_DIR=${REMOTE_BASE_DIR}/.${APP_NAME}_deploy_${TIMESTAMP}" >> $GITHUB_ENV
+          echo "REMOTE_BACKUP_DIR=${REMOTE_BASE_DIR}/.${APP_NAME}_backup_${TIMESTAMP}" >> $GITHUB_ENV
+          echo "REMOTE_APP_DIR=${REMOTE_BASE_DIR}/${APP_NAME}" >> $GITHUB_ENV
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" \
+            "mkdir -p '${REMOTE_BASE_DIR}' '${REMOTE_BASE_DIR}/.${APP_NAME}_deploy_${TIMESTAMP}'"
+
+      - name: Upload app via tar
+        run: |
+          tar \
+            --format=ustar \
+            --no-xattrs \
+            --exclude="${APP_NAME}/.git" \
+            --exclude="${APP_NAME}/.venv" \
+            --exclude="${APP_NAME}/.idea" \
+            --exclude="${APP_NAME}/.mypy_cache" \
+            --exclude="${APP_NAME}/.pytest_cache" \
+            --exclude="${APP_NAME}/.ruff_cache" \
+            --exclude="${APP_NAME}/__pycache__" \
+            --exclude="${APP_NAME}/rexa/models/__pycache__" \
+            --exclude="${APP_NAME}/rexa/tools/__pycache__" \
+            --exclude="${APP_NAME}/inference_model/**/__pycache__" \
+            --exclude="${APP_NAME}/*.pyc" \
+            --exclude="${APP_NAME}/.DS_Store" \
+            -C ".." \
+            -czf - \
+            "${APP_NAME}" \
+          | ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" \
+            "tar -xzf - -C '${REMOTE_TMP_DIR}'"
+
+      - name: Upload rexa/memory.py explicitly
+        run: |
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" \
+            "cat > '${REMOTE_TMP_DIR}/${APP_NAME}/rexa/memory.py'" \
+            < rexa/memory.py
+
+      - name: Verify memory.py in remote package
+        run: |
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" bash <<'ENDSSH'
+            set -euo pipefail
+            if [ ! -f "${REMOTE_TMP_DIR}/${APP_NAME}/rexa/memory.py" ]; then
+              echo "[deploy] extracted package is missing rexa/memory.py"
+              exit 1
+            fi
+          ENDSSH
+
+      - name: Atomic swap (backup → deploy)
+        run: |
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" bash <<ENDSSH
+            set -euo pipefail
+            if [ -d '${REMOTE_APP_DIR}' ]; then
+              mv '${REMOTE_APP_DIR}' '${REMOTE_BACKUP_DIR}'
+            fi
+            mv '${REMOTE_TMP_DIR}/${APP_NAME}' '${REMOTE_APP_DIR}'
+            rmdir '${REMOTE_TMP_DIR}'
+          ENDSSH
+
+      - name: Patch .env on remote
+        run: |
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" bash <<ENDSSH
+            set -euo pipefail
+            ENV_FILE='${REMOTE_APP_DIR}/.env'
+            if [ ! -f "\${ENV_FILE}" ]; then
+              echo "[deploy] .env 파일 없음, 환경값 치환 건너뜀"
+              exit 0
+            fi
+
+            sed -i 's|REXA_DB_HOST=localhost|REXA_DB_HOST=${REMOTE_DB_HOST}|g' "\${ENV_FILE}"
+
+            if grep -q '^BOS_SERVER_BASE_URL=' "\${ENV_FILE}"; then
+              sed -i 's|^BOS_SERVER_BASE_URL=.*|BOS_SERVER_BASE_URL=${REMOTE_BOS_SERVER_BASE_URL}|' "\${ENV_FILE}"
+            else
+              printf '\nBOS_SERVER_BASE_URL=${REMOTE_BOS_SERVER_BASE_URL}\n' >> "\${ENV_FILE}"
+            fi
+
+            if grep -q '^REDIS_URL=' "\${ENV_FILE}"; then
+              sed -i 's|^REDIS_URL=.*|REDIS_URL=${REMOTE_REDIS_URL}|' "\${ENV_FILE}"
+            else
+              printf '\nREDIS_URL=${REMOTE_REDIS_URL}\n' >> "\${ENV_FILE}"
+            fi
+
+            echo "[deploy] .env REXA_DB_HOST → ${REMOTE_DB_HOST}"
+            echo "[deploy] .env BOS_SERVER_BASE_URL → ${REMOTE_BOS_SERVER_BASE_URL}"
+            echo "[deploy] .env REDIS_URL → ${REMOTE_REDIS_URL}"
+          ENDSSH
+
+      - name: Restart service
+        run: |
+          ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" \
+            "sudo systemctl restart rexa-chatbot"
+
+      - name: Deploy complete
+        run: |
+          echo "[deploy] done"
+          echo "[deploy] app uploaded to ${REMOTE_APP_DIR}"
+          if ssh "${{ env.REMOTE_USER }}@${{ env.REMOTE_HOST }}" "[ -d '${REMOTE_BACKUP_DIR}' ]"; then
+            echo "[deploy] backup saved at ${REMOTE_BACKUP_DIR}"
+          fi
