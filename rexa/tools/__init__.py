@@ -4,14 +4,6 @@ from .search_commercial_area import search_commercial_area
 from .get_building_registry import get_building_registry
 from .get_land_price import get_land_price
 from .get_transaction_history import get_transaction_history
-from rexa.tools.archive.get_building_price import get_building_price as get_building_price_archive
-from rexa.tools.archive.get_building_price_v1 import get_building_price_v1
-from rexa.tools.archive.get_building_price_v2 import get_building_price_v2
-from rexa.tools.archive.get_building_price_v3 import get_building_price_v3
-from rexa.tools.archive.get_building_price_v4 import get_building_price_v4
-from rexa.tools.archive.get_building_price_v5 import get_building_price_v5
-from rexa.tools.archive.get_building_price_v6 import get_building_price_v6
-from rexa.tools.archive.get_building_price_v7 import get_building_price_v7
 from rexa.tools.get_building_price import get_building_price
 from rexa.tools.get_suhan_property import get_suhan_property
 from rexa.tools.get_suhan_rent_property import get_suhan_rent_property
