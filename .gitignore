@@ -1,0 +1,7 @@
+.idea/**
+.claude/**
+data-collect/**
+**/__pycache__/*
+**/*.env*
+rexa/tools/archive/**
+deploy_rexa*
