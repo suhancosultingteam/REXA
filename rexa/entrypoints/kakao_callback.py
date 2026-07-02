@@ -358,14 +358,6 @@ def _build_feedback_button(user_id: Optional[str]) -> Dict[str, Any]:
     return KakaoChatbotResponse.web_link_button("피드백 보내기", _feedback_url(user_id))
 
 
-def _build_feedback_card(user_id: Optional[str]) -> Dict[str, Any]:
-    return KakaoChatbotResponse.text_card(
-        title="피드백을 남겨주세요",
-        description="더 나은 서비스를 위해 의견을 들려주세요.",
-        buttons=[_build_feedback_button(user_id)],
-    )
-
-
 def extract_user_id(skill_payload: Dict[str, Any]) -> Optional[str]:
     user = skill_payload.get("userRequest", {}).get("user", {})
     return user.get("id") or user.get("properties", {}).get("botUserKey")
@@ -633,7 +625,7 @@ def build_final_response(
             _build_openchat_inquiry_card(user_id),
         ]
     else:
-        outputs = [{"simpleText": {"text": answer}}, _build_feedback_card(user_id)]
+        outputs = [{"simpleText": {"text": answer}}]
 
     return KakaoChatbotResponse.template(outputs=outputs)
 
