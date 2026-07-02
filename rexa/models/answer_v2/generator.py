@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from rexa.infra.chat_logging import LayerMetrics, extract_token_usage
 from rexa.infra.llm_failover import build_chat_model, run_with_failover, with_cached_leading_system_messages
 from rexa.infra.logger import setup_logger, log_messages
+from rexa.models.answer_v2.building_price_template import try_build_building_price_answer
 from rexa.models.answer_v2.context_builder import build_answer_context
 from rexa.prompts import (
     ANSWER_PROMPT_A,
@@ -110,6 +111,14 @@ def generate_answer_with_metrics(
         return answer_text, LayerMetrics(
             latency_ms=int((time.perf_counter() - started_at) * 1000),
         )
+
+    if query_type == "A" and retrieval.get("get_building_price"):
+        template_answer = try_build_building_price_answer(origin, retrieval)
+        if template_answer is not None:
+            log.info("[결과V2] 건물가격 템플릿 응답 사용")
+            return template_answer, LayerMetrics(
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+            )
 
     context = build_answer_context(retrieval)
     log.debug(f"[결과V2] retrieval 컨텍스트 사용 ({len(context)}자)")
