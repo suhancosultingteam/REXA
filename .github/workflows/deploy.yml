@@ -45,12 +45,22 @@ jobs:
           REXA_DB_USER=${{ secrets.REXA_DB_USER }}
           REXA_DB_PASSWORD=${{ secrets.REXA_DB_PASSWORD }}
 
+          CHAT_LOG_USER_HASH_SALT=${{ secrets.CHAT_LOG_USER_HASH_SALT }}
+          CHAT_LOG_USER_ID_ENC_KEY=${{ secrets.CHAT_LOG_USER_ID_ENC_KEY }}
+
           BOS_SERVER_BASE_URL=http://52.78.92.214/api
           COMMERCIAL_AREA_TOP_K=5
           COMMERCIAL_AREA_TIMEOUT_SECONDS=20
 
           REDIS_URL=localhost:6379
           EOF
+
+      - name: Verify CHAT_LOG_USER_ID_ENC_KEY secret is set
+        run: |
+          if [ -z "${{ secrets.CHAT_LOG_USER_ID_ENC_KEY }}" ]; then
+            echo "[deploy] CHAT_LOG_USER_ID_ENC_KEY secret이 설정되어 있지 않습니다. chat_logs.user_id_enc 암호화가 동작하지 않습니다."
+            exit 1
+          fi
 
       - name: Setup SSH
         run: |

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import base64
 import csv
 import hashlib
 import io
@@ -12,6 +13,7 @@ import subprocess
 from typing import Any
 from uuid import uuid4
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from dotenv import load_dotenv
 
 
@@ -21,6 +23,7 @@ log = logging.getLogger("rexa")
 
 CHAT_LOG_TABLE = os.getenv("CHAT_LOG_TABLE", "chat_logs").strip() or "chat_logs"
 CHAT_LOG_USER_HASH_SALT = os.getenv("CHAT_LOG_USER_HASH_SALT", "")
+CHAT_LOG_USER_ID_ENC_KEY = os.getenv("CHAT_LOG_USER_ID_ENC_KEY", "")
 
 _TABLE_READY = False
 
@@ -234,6 +237,34 @@ def hash_user_id(user_id: str | None) -> str | None:
     return digest
 
 
+def _aes_key() -> bytes:
+    if not CHAT_LOG_USER_ID_ENC_KEY:
+        raise RuntimeError("CHAT_LOG_USER_ID_ENC_KEY 환경변수가 설정되어 있지 않습니다.")
+    key = base64.b64decode(CHAT_LOG_USER_ID_ENC_KEY)
+    if len(key) not in (16, 24, 32):
+        raise RuntimeError("CHAT_LOG_USER_ID_ENC_KEY는 base64로 인코딩된 16/24/32바이트 키여야 합니다.")
+    return key
+
+
+def encrypt_user_id(user_id: str | None) -> str | None:
+    """실제 user id가 필요한 운영 조회를 위해 AES-GCM으로 암호화해 반환한다 (nonce||ciphertext, base64)."""
+    if not user_id:
+        return None
+    aesgcm = AESGCM(_aes_key())
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, user_id.encode("utf-8"), None)
+    return base64.b64encode(nonce + ciphertext).decode("ascii")
+
+
+def decrypt_user_id(encrypted_value: str | None) -> str | None:
+    if not encrypted_value:
+        return None
+    aesgcm = AESGCM(_aes_key())
+    raw = base64.b64decode(encrypted_value)
+    nonce, ciphertext = raw[:12], raw[12:]
+    return aesgcm.decrypt(nonce, ciphertext, None).decode("utf-8")
+
+
 def ensure_chat_log_table() -> None:
     global _TABLE_READY
     if _TABLE_READY:
@@ -245,6 +276,7 @@ def ensure_chat_log_table() -> None:
             id BIGSERIAL PRIMARY KEY,
             request_id UUID NOT NULL UNIQUE,
             user_key VARCHAR(128),
+            user_id_enc TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             user_input TEXT NOT NULL,
             model_output TEXT,
@@ -259,6 +291,8 @@ def ensure_chat_log_table() -> None:
             layer_tokens JSONB NOT NULL DEFAULT '{{}}'::jsonb,
             metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb
         );
+
+        ALTER TABLE {CHAT_LOG_TABLE} ADD COLUMN IF NOT EXISTS user_id_enc TEXT;
 
         CREATE INDEX IF NOT EXISTS idx_{CHAT_LOG_TABLE}_user_created
             ON {CHAT_LOG_TABLE} (user_key, created_at DESC);
@@ -300,10 +334,17 @@ def save_chat_log(result: PipelineRunResult) -> None:
         for name, metric in result.layer_metrics.items()
     }
 
+    try:
+        user_id_enc = encrypt_user_id(result.user_id)
+    except RuntimeError as exc:
+        user_id_enc = None
+        log.warning("[로그] user_id 암호화 실패, user_id_enc는 NULL로 저장됩니다 | %s", exc)
+
     query = f"""
     INSERT INTO {CHAT_LOG_TABLE} (
         request_id,
         user_key,
+        user_id_enc,
         created_at,
         user_input,
         model_output,
@@ -320,6 +361,7 @@ def save_chat_log(result: PipelineRunResult) -> None:
     ) VALUES (
         {_sql_literal(result.request_id)},
         {_sql_literal(hash_user_id(result.user_id))},
+        {_sql_literal(user_id_enc)},
         {_sql_literal(result.created_at)},
         {_sql_literal(result.user_input)},
         {_sql_literal(result.answer)},

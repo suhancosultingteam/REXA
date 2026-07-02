@@ -365,9 +365,10 @@ def extract_user_id(skill_payload: Dict[str, Any]) -> Optional[str]:
 
 def extract_chat_debug_info(skill_payload: Dict[str, Any]) -> Dict[str, Any]:
     user_request = skill_payload.get("userRequest", {})
+    # 원본 카카오 user id는 chat_logs.user_id_enc(AES 암호화)에 별도 저장되므로
+    # metadata에는 평문 user 식별자를 남기지 않는다.
     return {
         "chatId": user_request.get("chatId"),
-        "user": user_request.get("user"),
         "block": user_request.get("block"),
         "params": user_request.get("params"),
         "contexts": skill_payload.get("contexts"),
