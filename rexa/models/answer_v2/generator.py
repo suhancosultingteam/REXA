@@ -27,6 +27,23 @@ _SERVICE_GUIDE_MESSAGE = (
     "주소나 장소가 확인되면 건물 정보, 공시지가, 실거래가, 상권 분석, 추정가 같은 데이터는 이어서 바로 확인해드릴 수 있어요."
 )
 
+_SEOUL_ONLY_TOOLS = {"get_building_registry", "get_building_price", "search_commercial_area"}
+SEOUL_ONLY_NOTICE = "렉사는 현재 서울 지역 분석만 지원합니다."
+
+
+def _is_seoul_sigungu_code(sigungu_code: str) -> bool:
+    return sigungu_code.startswith("11") and len(sigungu_code) == 5
+
+
+def _needs_seoul_only_notice(retrieval_result: dict, retrieval: dict) -> bool:
+    if not any(tool_name in retrieval for tool_name in _SEOUL_ONLY_TOOLS):
+        return False
+    addresses = retrieval_result.get("addresses") or []
+    sigungu_codes = [str(addr.get("sigungu_code") or "") for addr in addresses if addr.get("sigungu_code")]
+    if not sigungu_codes:
+        return False
+    return not any(_is_seoul_sigungu_code(code) for code in sigungu_codes)
+
 _EMOJI_PATTERN = re.compile(
     "["
     "\U0001F300-\U0001F5FF"
@@ -101,6 +118,8 @@ def generate_answer_with_metrics(
     log.info(f"[결과V2] 시작 ▶ 질문: {origin!r} | query_type={query_type}")
     log.debug(f"[결과V2] 조회된 툴: {list(retrieval.keys())}")
 
+    needs_seoul_only_notice = _needs_seoul_only_notice(retrieval_result, retrieval)
+
     if not retrieval and query_type != 'D':
         log.info("[결과V2] 툴 미호출 → fallback 응답")
         answer_text = (
@@ -116,6 +135,8 @@ def generate_answer_with_metrics(
         template_answer = try_build_building_price_answer(origin, retrieval)
         if template_answer is not None:
             log.info("[결과V2] 건물가격 템플릿 응답 사용")
+            if needs_seoul_only_notice:
+                template_answer = f"{template_answer}\n\n{SEOUL_ONLY_NOTICE}"
             return template_answer, LayerMetrics(
                 latency_ms=int((time.perf_counter() - started_at) * 1000),
             )
@@ -176,6 +197,8 @@ def generate_answer_with_metrics(
     response = llm_response
     log_messages(log, [response], "[결과V2]")
     answer_text = _strip_emojis(_strip_markdown(response.content))
+    if needs_seoul_only_notice:
+        answer_text = f"{answer_text}\n\n{SEOUL_ONLY_NOTICE}"
 
     log.info(f"[결과V2] 완료 ◀ 답변 {len(answer_text)}자 생성")
     log.debug(f"[결과V2] 답변 내용:\n{answer_text}")
