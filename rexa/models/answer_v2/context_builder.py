@@ -154,8 +154,8 @@ def _summarize_commercial_area(results: list[dict]) -> str:
         chunk_lines = []
         for chunk in selected_chunks:
             query = chunk.get("matched_query") or "-"
-            score = chunk.get("score")
-            text = str(chunk.get("text") or "").strip()
+            score = _commercial_chunk_score(chunk)
+            text = _commercial_chunk_text(chunk)
             chunk_lines.append(
                 "\n".join([
                     f"query: {query}",
@@ -176,13 +176,32 @@ def _summarize_commercial_area(results: list[dict]) -> str:
 
 
 def _chunk_sort_key(chunk: dict) -> tuple[int, float]:
-    score = chunk.get("score")
+    score = _commercial_chunk_score(chunk)
     if score is None:
         return (1, 0.0)
     try:
         return (0, -float(score))
     except (TypeError, ValueError):
         return (1, 0.0)
+
+
+def _commercial_chunk_score(chunk: dict) -> float | None:
+    for key in ("score", "similarity", "searchScore", "@search.score"):
+        value = chunk.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _commercial_chunk_text(chunk: dict) -> str:
+    for key in ("text", "chunkText", "chunk_text", "content", "body", "summary"):
+        value = chunk.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
 
 
 def _select_commercial_area_chunks(chunks: list[dict], limit: int) -> list[dict]:

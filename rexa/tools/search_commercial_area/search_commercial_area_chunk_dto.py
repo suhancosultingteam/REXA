@@ -8,6 +8,12 @@ class SearchCommercialAreaChunkDto(BaseModel):
         default=None,
         validation_alias=AliasChoices("chunk_uuid", "chunkUuid"),
     )
-    score: float | None = None
-    text: str | None = None
+    score: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("score", "similarity", "searchScore", "@search.score"),
+    )
+    text: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("text", "chunkText", "chunk_text", "content", "body", "summary"),
+    )
     matched_query: str | None = None

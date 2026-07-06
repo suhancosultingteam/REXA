@@ -9,6 +9,7 @@ class SearchCommercialAreaResultDto(ToolResultBase):
     base_url: str | None = None
 
     sigungu_code: str | None = None
+    district: str | None = None
     queries: list[str] | None = None
     count: int | None = None
     chunks: list[SearchCommercialAreaChunkDto] | None = None

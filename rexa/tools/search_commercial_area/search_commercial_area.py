@@ -18,18 +18,58 @@ COMMERCIAL_AREA_TIMEOUT_SECONDS = float(os.getenv("COMMERCIAL_AREA_TIMEOUT_SECON
 log = setup_logger()
 
 
+_GENERIC_COMMERCIAL_SUFFIXES = (
+    "상권 분석",
+    "상권분석",
+    "상권",
+)
+
+
+def _normalize_query_text(query: str) -> str:
+    return " ".join(query.strip().split())
+
+
+def _subject_without_generic_suffix(query: str) -> str:
+    normalized = _normalize_query_text(query)
+    for suffix in _GENERIC_COMMERCIAL_SUFFIXES:
+        if normalized.endswith(suffix):
+            return normalized[:-len(suffix)].strip()
+    return normalized
+
+
+def _is_generic_commercial_query(query: str) -> bool:
+    normalized = _normalize_query_text(query)
+    return any(normalized.endswith(suffix) for suffix in _GENERIC_COMMERCIAL_SUFFIXES)
+
+
 def _build_search_queries(queries: list[str]) -> list[str]:
-    normalized: list[str] = []
+    normalized_all: list[str] = []
     seen: set[str] = set()
     for query in queries:
-        value = query.strip()
+        value = _normalize_query_text(query)
         if not value or value in seen:
             continue
         seen.add(value)
-        normalized.append(value)
-        if len(normalized) >= min(max(1, COMMERCIAL_AREA_MAX_QUERIES), _COMMERCIAL_AREA_MAX_QUERIES_CAP):
-            break
-    return normalized
+        normalized_all.append(value)
+
+    if not normalized_all:
+        return []
+
+    filtered: list[str] = []
+    for query in normalized_all:
+        if _is_generic_commercial_query(query):
+            subject = _subject_without_generic_suffix(query)
+            has_more_specific_query = any(
+                other != query and _normalize_query_text(other).startswith(subject)
+                for other in normalized_all
+            )
+            if has_more_specific_query:
+                continue
+        filtered.append(query)
+
+    source = filtered or normalized_all
+    limit = min(max(1, COMMERCIAL_AREA_MAX_QUERIES), _COMMERCIAL_AREA_MAX_QUERIES_CAP)
+    return source[:limit]
 
 
 def _search_chunks(query: str, top_k: int, sigungu_code: str) -> list[dict]:
@@ -41,6 +81,37 @@ def _search_chunks(query: str, top_k: int, sigungu_code: str) -> list[dict]:
     response.raise_for_status()
     payload = response.json()
     return payload.get("rows", [])
+
+
+def _normalize_chunk_row(row: dict, matched_query: str) -> dict:
+    payload = dict(row)
+    payload["matched_query"] = matched_query
+    payload["chunk_uuid"] = (
+        payload.get("chunk_uuid")
+        or payload.get("chunkUuid")
+        or payload.get("id")
+    )
+    payload["score"] = (
+        payload.get("score")
+        or payload.get("similarity")
+        or payload.get("searchScore")
+        or payload.get("@search.score")
+    )
+    payload["text"] = (
+        payload.get("text")
+        or payload.get("chunkText")
+        or payload.get("chunk_text")
+        or payload.get("content")
+        or payload.get("body")
+        or payload.get("summary")
+        or ""
+    )
+    payload["district"] = (
+        payload.get("district")
+        or payload.get("sigungu_name")
+        or payload.get("sigunguName")
+    )
+    return payload
 
 
 @tool(args_schema=SearchCommercialAreaInputDto)
@@ -84,12 +155,12 @@ def search_commercial_area(sigungu_code: str, queries: list[str]) -> SearchComme
             rows = _search_chunks(query, top_k, sigungu_code)
             log.debug(f"[툴][search_commercial_area] BOS 응답 ◀ {len(rows)}개 청크")
             for row in rows:
-                chunk_uuid = row.get("chunkUuid") or row.get("chunk_uuid") or row.get("id")
+                normalized_row = _normalize_chunk_row(row, query)
+                chunk_uuid = normalized_row.get("chunk_uuid")
                 if chunk_uuid in seen_chunk_uuids:
                     continue
                 seen_chunk_uuids.add(chunk_uuid)
-                row["matched_query"] = query
-                chunks.append(SearchCommercialAreaChunkDto.model_validate(row))
+                chunks.append(SearchCommercialAreaChunkDto.model_validate(normalized_row))
     except httpx.TimeoutException as exc:
         log.error(f"[툴][search_commercial_area] BOS 타임아웃 ({COMMERCIAL_AREA_TIMEOUT_SECONDS}s) | URL={BOS_SERVER_BASE_URL} | {exc}")
         return SearchCommercialAreaResultDto(
@@ -124,8 +195,15 @@ def search_commercial_area(sigungu_code: str, queries: list[str]) -> SearchComme
         )
 
     log.info(f"[툴][search_commercial_area] 완료 ▶ 총 {len(chunks)}개 청크")
+    district = None
+    if chunks:
+        first_chunk = chunks[0]
+        district = getattr(first_chunk, "district", None)
+        if district is None and hasattr(first_chunk, "model_dump"):
+            district = first_chunk.model_dump(mode="json", exclude_none=True).get("district")
     return SearchCommercialAreaResultDto(
         sigungu_code=sigungu_code,
+        district=district,
         queries=search_queries,
         count=len(chunks),
         chunks=chunks,
