@@ -22,6 +22,7 @@ load_dotenv()
 log = setup_logger()
 
 _SYSTEM_PROMPT = BASE_ANSWER_SYSTEM_PROMPT
+_ANSWER_MODEL_PROFILE = "fast"
 
 _SERVICE_GUIDE_MESSAGE = (
     "주소나 장소가 확인되면 건물 정보, 공시지가, 실거래가, 상권 분석, 추정가 같은 데이터는 이어서 바로 확인해드릴 수 있어요."
@@ -194,16 +195,16 @@ def generate_answer_with_metrics(
     llm_response, provider, model_name = run_with_failover(
         "answer_v2_chat",
         log,
-        primary_call=lambda: build_chat_model("claude", "quality", temperature=0.3).invoke(
+        primary_call=lambda: build_chat_model("claude", _ANSWER_MODEL_PROFILE, temperature=0.3).invoke(
             with_cached_leading_system_messages("claude", messages)
         ),
-        fallback_call=lambda: build_chat_model("openai", "quality", temperature=0.3).invoke(
+        fallback_call=lambda: build_chat_model("openai", _ANSWER_MODEL_PROFILE, temperature=0.3).invoke(
             with_cached_leading_system_messages("openai", messages)
         ),
-        tertiary_call=lambda: build_chat_model("gemini", "quality", temperature=0.3).invoke(
+        tertiary_call=lambda: build_chat_model("gemini", _ANSWER_MODEL_PROFILE, temperature=0.3).invoke(
             with_cached_leading_system_messages("gemini", messages)
         ),
-        model_profile="quality",
+        model_profile=_ANSWER_MODEL_PROFILE,
         include_provider_details=True,
     )
     timing_breakdown["llm_ms"] = int((time.perf_counter() - step_started_at) * 1000)
