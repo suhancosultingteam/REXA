@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from rexa.infra.chat_logging import LayerMetrics, extract_token_usage
 from rexa.infra.llm_failover import build_chat_model, run_with_failover, with_cached_leading_system_messages
-from rexa.infra.logger import setup_logger, log_llm_text
+from rexa.infra.logger import setup_logger, log_latency, log_llm_text
 from rexa.models.preprocess import PreprocessResult
 from rexa.prompts import ROUTER_SYSTEM_PROMPT
 from rexa.tools import (
@@ -127,6 +127,7 @@ def _invoke_tool(name: str, args: dict[str, Any]) -> dict:
 
 def retrieve_with_metrics(preprocess_result: PreprocessResult) -> tuple[dict, LayerMetrics]:
     started_at = time.perf_counter()
+    timing_breakdown: dict[str, int] = {}
     addr_count = len(preprocess_result.addresses)
     log.info(
         f"[라우터V3] 시작 ▶ 질문: {preprocess_result.origin!r} | "
@@ -149,11 +150,16 @@ def retrieve_with_metrics(preprocess_result: PreprocessResult) -> tuple[dict, La
         }
         metrics = LayerMetrics(
             latency_ms=int((time.perf_counter() - started_at) * 1000),
+            timing_breakdown=timing_breakdown,
         )
+        log_latency(log, "[라우터V3]", metrics.timing_payload())
         return payload, metrics
 
+    step_started_at = time.perf_counter()
     input_prompt = _build_input_prompt(preprocess_result)
+    timing_breakdown["input_prompt_build_ms"] = int((time.perf_counter() - step_started_at) * 1000)
     log_llm_text(log, "[라우터V3]", "->", input_prompt)
+    step_started_at = time.perf_counter()
     planner_message, provider, model_name = _invoke_planner_with_failover(
         [
             SystemMessage(content=ROUTER_SYSTEM_PROMPT),
@@ -161,16 +167,28 @@ def retrieve_with_metrics(preprocess_result: PreprocessResult) -> tuple[dict, La
         ],
         profile="fast",
     )
+    timing_breakdown["planner_llm_ms"] = int((time.perf_counter() - step_started_at) * 1000)
 
 
     tool_calls = _extract_tool_calls(planner_message)
+    timing_breakdown["tool_call_count"] = len(tool_calls)
     log.info(f"planner_ message: {tool_calls}")
     log_llm_text(log, "[라우터V3]", " tool_calls ", json.dumps(tool_calls, ensure_ascii=False, indent=2))
 
     tool_results: dict[str, list[Any]] = {}
+    tool_timing: dict[str, int] = {}
+    total_tool_ms = 0
     for tool_call in tool_calls:
+        step_started_at = time.perf_counter()
         result = _invoke_tool(tool_call["name"], tool_call["args"])
+        elapsed_ms = int((time.perf_counter() - step_started_at) * 1000)
+        total_tool_ms += elapsed_ms
+        tool_name = tool_call["name"]
+        tool_timing[tool_name] = tool_timing.get(tool_name, 0) + elapsed_ms
         tool_results.setdefault(tool_call["name"], []).append(result)
+    timing_breakdown["tool_invoke_ms"] = total_tool_ms
+    for tool_name, elapsed_ms in tool_timing.items():
+        timing_breakdown[f"tool:{tool_name}_ms"] = elapsed_ms
 
     called = {name: len(values) for name, values in tool_results.items()}
     log.info(f"[라우터V3] 완료 ◀ 총 {sum(called.values())}회 호출 | {called}")
@@ -192,7 +210,9 @@ def retrieve_with_metrics(preprocess_result: PreprocessResult) -> tuple[dict, La
         model_name=model_name,
         latency_ms=int((time.perf_counter() - started_at) * 1000),
         tokens=extract_token_usage(planner_message),
+        timing_breakdown=timing_breakdown,
     )
+    log_latency(log, "[라우터V3]", metrics.timing_payload())
     return payload, metrics
 
 

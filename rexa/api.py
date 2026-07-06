@@ -7,6 +7,7 @@ import time
 from dotenv import load_dotenv
 
 from rexa.infra.chat_logging import PipelineRunResult, save_chat_log_best_effort
+from rexa.infra.logger import log_latency
 from rexa.models.answer_v2 import generate_answer_with_metrics
 from rexa.models.preprocess import preprocess_with_metrics
 from rexa.models.router_v3 import retrieve_with_metrics
@@ -42,7 +43,11 @@ def run_query(
     log.info(f"[파이프라인] ▶ 시작 | 입력: {user_input!r} | user_id={user_id}")
 
     try:
+        pipeline_timing: dict[str, int] = {}
+
+        step_started_at = time.perf_counter()
         history = get_history(user_id) if user_id else []
+        pipeline_timing["memory_load_ms"] = int((time.perf_counter() - step_started_at) * 1000)
         log.info(f"[파이프라인] 메모리 로드: {len(history) // 2}턴")
         log.info(f"[파이프라인] 메모리 : {json.dumps(history, indent=2, ensure_ascii=False)}")
 
@@ -72,8 +77,12 @@ def run_query(
         log.info(f"[파이프라인] ◀ 완료 | {len(answer)}자")
 
         if user_id:
+            step_started_at = time.perf_counter()
             save_turn(user_id, user_input, answer)
+            pipeline_timing["save_turn_ms"] = int((time.perf_counter() - step_started_at) * 1000)
 
+        result.metadata["pipeline_timing"] = pipeline_timing
+        log_latency(log, "[파이프라인]", pipeline_timing | {"total_ms": int((time.perf_counter() - started_at) * 1000)})
         result.status = "success"
         return result
     except Exception as exc:

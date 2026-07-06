@@ -114,6 +114,7 @@ class LayerMetrics:
     model_name: str = ""
     latency_ms: int = 0
     tokens: TokenUsage = field(default_factory=TokenUsage)
+    timing_breakdown: dict[str, int] = field(default_factory=dict)
 
     def token_payload(self) -> dict[str, Any]:
         payload = self.tokens.to_dict()
@@ -121,6 +122,11 @@ class LayerMetrics:
             payload["provider"] = self.provider
         if self.model_name:
             payload["model_name"] = self.model_name
+        return payload
+
+    def timing_payload(self) -> dict[str, int]:
+        payload = {"total_ms": self.latency_ms}
+        payload.update(self.timing_breakdown)
         return payload
 
 
@@ -158,6 +164,10 @@ class PipelineRunResult:
     @property
     def layer_tokens_payload(self) -> dict[str, dict[str, Any]]:
         return {name: metric.token_payload() for name, metric in self.layer_metrics.items()}
+
+    @property
+    def layer_timing_payload(self) -> dict[str, dict[str, int]]:
+        return {name: metric.timing_payload() for name, metric in self.layer_metrics.items()}
 
 
 def _as_int(value: Any) -> int:
@@ -368,6 +378,7 @@ def save_chat_log(result: PipelineRunResult) -> None:
         }
         for name, metric in result.layer_metrics.items()
     }
+    metadata["layer_timing"] = result.layer_timing_payload
 
     try:
         user_id_enc = encrypt_user_id(result.user_id)

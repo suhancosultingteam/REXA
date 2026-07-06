@@ -128,6 +128,13 @@ def log_llm_text(logger: logging.Logger, stage: str, direction: str, text: str) 
     logger.info(f"[LLM{direction}] {stage} {text}")
 
 
+def log_latency(logger: logging.Logger, stage: str, timings: dict[str, int]) -> None:
+    if not timings:
+        return
+    payload = " ".join(f"{key}={value}ms" if key.endswith("_ms") or key == "total_ms" else f"{key}={value}" for key, value in timings.items())
+    logger.info(f"[LATENCY] {stage} {payload}")
+
+
 def _iter_stream_chunk_messages(payload: Any) -> list[tuple[str, list]]:
     if not isinstance(payload, dict):
         return []

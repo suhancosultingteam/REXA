@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from rexa.infra.chat_logging import LayerMetrics, extract_token_usage
 from rexa.infra.llm_failover import build_chat_model, run_with_failover, with_cached_leading_system_messages
-from rexa.infra.logger import setup_logger, log_messages
+from rexa.infra.logger import setup_logger, log_latency, log_messages
 from rexa.models.answer_v2.building_price_template import try_build_building_price_answer
 from rexa.models.answer_v2.context_builder import build_answer_context
 from rexa.prompts import (
@@ -110,6 +110,7 @@ def generate_answer_with_metrics(
     history: list[dict] | None = None,
 ) -> tuple[str, LayerMetrics]:
     started_at = time.perf_counter()
+    timing_breakdown: dict[str, int] = {}
     origin = retrieval_result["origin"]
     query_type = _resolve_query_type(retrieval_result)
     retrieval = retrieval_result.get("retrieval", {})
@@ -127,9 +128,12 @@ def generate_answer_with_metrics(
             "예를 들면 `역삼1동`, `강남역`, `테헤란로 123`처럼 장소나 주소를 같이 보내주시면 바로 확인해볼게요.\n\n"
             f"{_SERVICE_GUIDE_MESSAGE}"
         )
-        return answer_text, LayerMetrics(
+        metrics = LayerMetrics(
             latency_ms=int((time.perf_counter() - started_at) * 1000),
+            timing_breakdown={"fallback_response_ms": int((time.perf_counter() - started_at) * 1000)},
         )
+        log_latency(log, "[결과V2]", metrics.timing_payload())
+        return answer_text, metrics
 
     if query_type == "A" and retrieval.get("get_building_price"):
         template_answer = try_build_building_price_answer(origin, retrieval)
@@ -137,11 +141,16 @@ def generate_answer_with_metrics(
             log.info("[결과V2] 건물가격 템플릿 응답 사용")
             if needs_seoul_only_notice:
                 template_answer = f"{template_answer}\n\n{SEOUL_ONLY_NOTICE}"
-            return template_answer, LayerMetrics(
+            metrics = LayerMetrics(
                 latency_ms=int((time.perf_counter() - started_at) * 1000),
+                timing_breakdown={"building_price_template_ms": int((time.perf_counter() - started_at) * 1000)},
             )
+            log_latency(log, "[결과V2]", metrics.timing_payload())
+            return template_answer, metrics
 
+    step_started_at = time.perf_counter()
     context = build_answer_context(retrieval)
+    timing_breakdown["context_build_ms"] = int((time.perf_counter() - step_started_at) * 1000)
     log.debug(f"[결과V2] retrieval 컨텍스트 사용 ({len(context)}자)")
 
     has_suhan = any(
@@ -161,6 +170,7 @@ def generate_answer_with_metrics(
         SystemMessage(content=_SYSTEM_PROMPT),
         SystemMessage(content=type_system_prompt),
     ]
+    step_started_at = time.perf_counter()
     for msg in (history or []):
         if msg["role"] == "user":
             messages.append(HumanMessage(content=msg["content"]))
@@ -176,9 +186,11 @@ def generate_answer_with_metrics(
             )
         )
     )
+    timing_breakdown["message_build_ms"] = int((time.perf_counter() - step_started_at) * 1000)
 
     log.debug("[결과V2] LLM 호출 중 (claude 우선, openai failover)")
     log_messages(log, messages, "[결과V2]")
+    step_started_at = time.perf_counter()
     llm_response, provider, model_name = run_with_failover(
         "answer_v2_chat",
         log,
@@ -194,11 +206,14 @@ def generate_answer_with_metrics(
         model_profile="quality",
         include_provider_details=True,
     )
+    timing_breakdown["llm_ms"] = int((time.perf_counter() - step_started_at) * 1000)
     response = llm_response
     log_messages(log, [response], "[결과V2]")
+    step_started_at = time.perf_counter()
     answer_text = _strip_emojis(_strip_markdown(response.content))
     if needs_seoul_only_notice:
         answer_text = f"{answer_text}\n\n{SEOUL_ONLY_NOTICE}"
+    timing_breakdown["postprocess_ms"] = int((time.perf_counter() - step_started_at) * 1000)
 
     log.info(f"[결과V2] 완료 ◀ 답변 {len(answer_text)}자 생성")
     log.debug(f"[결과V2] 답변 내용:\n{answer_text}")
@@ -208,7 +223,9 @@ def generate_answer_with_metrics(
         model_name=model_name,
         latency_ms=int((time.perf_counter() - started_at) * 1000),
         tokens=extract_token_usage(response),
+        timing_breakdown=timing_breakdown,
     )
+    log_latency(log, "[결과V2]", metrics.timing_payload())
     return answer_text, metrics
 
 

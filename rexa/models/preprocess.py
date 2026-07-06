@@ -8,7 +8,7 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from rexa.infra.chat_logging import LayerMetrics, extract_token_usage
 from rexa.infra.llm_failover import invoke_structured_with_failover
-from rexa.infra.logger import setup_logger, log_llm_text
+from rexa.infra.logger import setup_logger, log_latency, log_llm_text
 from rexa.models.commercial_area_alias import CommercialAreaAlias, match_commercial_area_aliases
 from rexa.prompts import PREPROCESS_SYSTEM_PROMPT
 from rexa.tools import search_by_address, search_by_keyword
@@ -174,7 +174,10 @@ def preprocess_with_metrics(
     history: list[dict] | None = None,
 ) -> tuple[PreprocessResult, LayerMetrics]:
     started_at = time.perf_counter()
+    timing_breakdown: dict[str, int] = {}
     log.info(f"[전처리] 시작 ▶ 입력: {user_input!r}")
+
+    step_started_at = time.perf_counter()
     messages: list = [SystemMessage(content=PREPROCESS_SYSTEM_PROMPT)]
     for msg in (history or []):
         if msg["role"] == "user":
@@ -182,8 +185,11 @@ def preprocess_with_metrics(
         else:
             messages.append(AIMessage(content=msg["content"]))
     messages.append(HumanMessage(content=user_input))
+    timing_breakdown["message_build_ms"] = int((time.perf_counter() - step_started_at) * 1000)
     log.info(f"[전처리] message : {messages}")
     log_llm_text(log, "[전처리]", " input ", user_input)
+
+    step_started_at = time.perf_counter()
     extracted_payload, provider, model_name = invoke_structured_with_failover(
         "preprocess_structured",
         log,
@@ -191,6 +197,7 @@ def preprocess_with_metrics(
         messages,
         profile="fast",
     )
+    timing_breakdown["llm_ms"] = int((time.perf_counter() - step_started_at) * 1000)
     raw_message = extracted_payload
     extracted = extracted_payload
     if isinstance(extracted_payload, dict) and "parsed" in extracted_payload:
@@ -222,6 +229,7 @@ def preprocess_with_metrics(
 
     resolved_addresses: list[AddressObject] = []
     if address_queries or keyword_queries:
+        step_started_at = time.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, len(address_queries) + len(keyword_queries))) as pool:
             address_futures = [(address, pool.submit(_resolve_address, address)) for address in address_queries]
             keyword_futures = [(keyword, pool.submit(_resolve_keyword, keyword)) for keyword in keyword_queries]
@@ -230,11 +238,15 @@ def preprocess_with_metrics(
             resolved_addresses.extend(_normalize_lookup_results(future.result(), address))
         for keyword, future in keyword_futures:
             resolved_addresses.extend(_normalize_lookup_results(future.result(), keyword))
+        timing_breakdown["lookup_resolve_ms"] = int((time.perf_counter() - step_started_at) * 1000)
+        timing_breakdown["address_query_count"] = len(address_queries)
+        timing_breakdown["keyword_query_count"] = len(keyword_queries)
 
     seen_alias_keys: set[tuple[str, str]] = set()
     commercial_areas: list[CommercialAreaAlias] = []
     search_terms = address_queries + keyword_queries
     log.info(f"[전처리][상권alias] 매칭 시작 ▶ 검색 대상 terms={search_terms}")
+    step_started_at = time.perf_counter()
     for term in search_terms:
         matched = match_commercial_area_aliases(term)
         log.debug(f"[전처리][상권alias] term={term!r} → 매칭 결과 {len(matched)}건: {[a.model_dump() for a in matched]}")
@@ -245,6 +257,7 @@ def preprocess_with_metrics(
                 continue
             seen_alias_keys.add(key)
             commercial_areas.append(alias)
+    timing_breakdown["commercial_area_alias_ms"] = int((time.perf_counter() - step_started_at) * 1000)
     if commercial_areas:
         log.info(f"[전처리][상권alias] 매칭 완료 ▶ {len(commercial_areas)}건: {[c.model_dump() for c in commercial_areas]}")
     else:
@@ -265,7 +278,9 @@ def preprocess_with_metrics(
         model_name=model_name,
         latency_ms=int((time.perf_counter() - started_at) * 1000),
         tokens=extract_token_usage(raw_message),
+        timing_breakdown=timing_breakdown,
     )
+    log_latency(log, "[전처리]", metrics.timing_payload())
     return result, metrics
 
 
