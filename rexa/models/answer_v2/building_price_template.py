@@ -20,8 +20,6 @@ BUILDING_PRICE_TEMPLATE = """입력하신 주소 기준으로 확인 가능한 �
 렉사 추정가: 약 {estimated_price}억 원 (대지 평당 약 {estimated_land_price_per_pyeong}억 원)
 ※ 렉사 추정가는 공시지가, 주변 실거래, 면적, 입지 조건 등을 바탕으로 한 내부 산정값이며, 감정평가액이나 실제 거래 가능가와 다를 수 있습니다.
 
-입지·상권 코멘트
-{commercial_area_summary}
 종합 의견
 {summary_comment}"""
 
