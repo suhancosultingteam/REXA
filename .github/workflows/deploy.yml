@@ -48,6 +48,11 @@ jobs:
           CHAT_LOG_USER_HASH_SALT=${{ secrets.CHAT_LOG_USER_HASH_SALT }}
           CHAT_LOG_USER_ID_ENC_KEY=${{ secrets.CHAT_LOG_USER_ID_ENC_KEY }}
 
+          KAKAO_BOT_ID=${{ secrets.KAKAO_BOT_ID }}
+          KAKAO_BOT_REST_API_KEY=${{ secrets.KAKAO_BOT_REST_API_KEY }}
+          KAKAO_EVENT_NAME=${{ secrets.KAKAO_EVENT_NAME }}
+          BROADCAST_ENABLED=${{ secrets.BROADCAST_ENABLED }}
+
           BOS_SERVER_BASE_URL=http://52.78.92.214/api
           COMMERCIAL_AREA_TOP_K=5
           COMMERCIAL_AREA_TIMEOUT_SECONDS=20
@@ -60,6 +65,12 @@ jobs:
           if [ -z "${{ secrets.CHAT_LOG_USER_ID_ENC_KEY }}" ]; then
             echo "[deploy] CHAT_LOG_USER_ID_ENC_KEY secret이 설정되어 있지 않습니다. chat_logs.user_id_enc 암호화가 동작하지 않습니다."
             exit 1
+          fi
+
+      - name: Verify daily broadcast secrets (non-blocking)
+        run: |
+          if [ -z "${{ secrets.KAKAO_BOT_ID }}" ] || [ -z "${{ secrets.KAKAO_EVENT_NAME }}" ]; then
+            echo "[deploy] KAKAO_BOT_ID/KAKAO_EVENT_NAME secret 미설정. rexa.scripts.daily_broadcast 배치는 아직 동작하지 않습니다(기존 챗봇 서비스에는 영향 없음)."
           fi
 
       - name: Setup SSH

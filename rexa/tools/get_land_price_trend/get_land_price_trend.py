@@ -34,9 +34,9 @@ def get_land_price_trend(
     - "공시지가가 얼마나 올랐어?", "지가 상승률 어때?" 같은 추이 질문
 
     반환:
-    - `query`: 조회한 필지 조건
+    - `query`: 조회 필지 조건
     - `trend`: 연도별 공시지가와 전년 대비 변화
-    - `summary`: 전체 기간 요약. 총 상승률과 CAGR이 포함됩니다.
+    - `summary`: 전체 기간 요약
     """
     normalized_gu = normalize_sigungu_code(sigungu_code)
     normalized_dong = normalize_bjdong_code(bjdong_code)

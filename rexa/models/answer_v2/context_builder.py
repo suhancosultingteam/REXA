@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict, deque
 
 from rexa.tools._utils import format_human_krw
 
@@ -149,13 +150,77 @@ def _summarize_commercial_area(results: list[dict]) -> str:
     lines = []
     for result in results[:_MAX_ITEMS_PER_SECTION]:
         chunks = result.get("chunks", [])
-        lines.append(_short_json({
-            "district": result.get("district"),
-            "queries": result.get("queries"),
-            "count": result.get("count", len(chunks)),
-            "top_chunks": chunks[:_MAX_ITEMS_PER_SECTION],
-        }))
+        selected_chunks = _select_commercial_area_chunks(chunks, _MAX_ITEMS_PER_SECTION)
+        chunk_lines = []
+        for chunk in selected_chunks:
+            query = chunk.get("matched_query") or "-"
+            score = chunk.get("score")
+            text = str(chunk.get("text") or "").strip()
+            chunk_lines.append(
+                "\n".join([
+                    f"query: {query}",
+                    f"score: {score}" if score is not None else "score: -",
+                    f"text: {text}",
+                ])
+            )
+        block = [
+            f"district: {result.get('district') or '-'}",
+            f"queries: {result.get('queries') or []}",
+            f"count: {result.get('count', len(chunks))}",
+        ]
+        if chunk_lines:
+            block.append("top_chunks:")
+            block.extend(chunk_lines)
+        lines.append("\n".join(block))
     return "\n".join(lines) if lines else "조회 결과 없음"
+
+
+def _chunk_sort_key(chunk: dict) -> tuple[int, float]:
+    score = chunk.get("score")
+    if score is None:
+        return (1, 0.0)
+    try:
+        return (0, -float(score))
+    except (TypeError, ValueError):
+        return (1, 0.0)
+
+
+def _select_commercial_area_chunks(chunks: list[dict], limit: int) -> list[dict]:
+    if limit <= 0:
+        return []
+
+    valid_chunks = [chunk for chunk in chunks if isinstance(chunk, dict)]
+    if not valid_chunks:
+        return []
+
+    grouped: dict[str, deque[dict]] = defaultdict(deque)
+    query_order: list[str] = []
+    seen_queries: set[str] = set()
+
+    for chunk in valid_chunks:
+        query = str(chunk.get("matched_query") or "").strip() or "__ungrouped__"
+        grouped[query].append(chunk)
+        if query not in seen_queries:
+            seen_queries.add(query)
+            query_order.append(query)
+
+    for query in query_order:
+        sorted_chunks = sorted(grouped[query], key=_chunk_sort_key)
+        grouped[query] = deque(sorted_chunks)
+
+    selected: list[dict] = []
+    while len(selected) < limit:
+        progressed = False
+        for query in query_order:
+            if not grouped[query]:
+                continue
+            selected.append(grouped[query].popleft())
+            progressed = True
+            if len(selected) >= limit:
+                break
+        if not progressed:
+            break
+    return selected
 
 
 def _summarize_area_transaction_stats(results: list[dict]) -> str:

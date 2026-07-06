@@ -72,23 +72,23 @@ def get_suhan_rent_property(
     min_stn_dist_min: float | None = None,
     min_stn_dist_max: float | None = None,
 ) -> GetSuhanRentPropertyResultDto:
-    """서안개발 임대 매물 데이터를 검색합니다.
+    """서안개발 임대 매물/유닛을 검색합니다.
 
     사용 시점:
-    - "임대 매물 있어?", "임대 가능한 공간 알려줘", "월세 얼마야?" 같은 임대 관련 질문
+    - "임대 매물 있어?", "임대 가능한 공간 알려줘", "월세 얼마야?" 같은 임대 질문
 
     조회 방식:
-    - 좌표 반경 검색: `lat + lng (+ radius_m)`
-    - 지번 주소 검색: `sigungu_code + bjdong_code (+ bun + ji)`
-    - 코드 검색: `code`
+    - 좌표 반경: `lat + lng (+ radius_m)`
+    - 지번 주소: `sigungu_code + bjdong_code (+ bun + ji)`
+    - 코드: `code`
 
     추가 필터:
-    - 임대면적, 전용면적, 보증금, 월 임대료, 관리비, 역거리 조건을 함께 줄 수 있습니다.
+    - 임대면적, 전용면적, 보증금, 월 임대료, 관리비, 역거리
 
     반환:
-    - `query`: 실제 검색 모드와 사용된 조건
-    - `count`: 반환 임대 유닛 수
-    - `listings`: 임대 유닛 목록. 매물 정보, 층, 면적, 보증금, 월 임대료, 관리비가 포함됩니다.
+    - `query`: 조회 모드와 조건
+    - `count`: 반환 유닛 수
+    - `listings`: 매물/유닛 목록
     """
     log.info(
         f"[툴][get_suhan_rent_property] 시작 ▶ "

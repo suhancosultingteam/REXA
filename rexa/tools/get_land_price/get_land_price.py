@@ -33,11 +33,11 @@ def get_land_price(
 
     파라미터:
     - `sigungu_code`, `bjdong_code`, `bun`, `ji`: 대상 필지 식별자
-    - `base_year`: 특정 시점 기준으로 조회하고 싶을 때만 사용
+    - `base_year`: 특정 시점 기준 조회 시만 사용
 
     반환:
-    - `query`: 실제 조회에 사용한 필지 조건
-    - `latest`: 최신 1건. 기준연도, 기준월, ㎡당 공시지가, 지목 정보가 포함됩니다.
+    - `query`: 조회 조건
+    - `latest`: 최신 1건
     """
     normalized_gu = normalize_sigungu_code(sigungu_code)
     normalized_dong = normalize_bjdong_code(bjdong_code)

@@ -32,26 +32,26 @@ def get_transaction_history(
     recent_years: int = 3,
     limit: int = 10,
 ) -> GetTransactionHistoryResultDto:
-    """건물 실거래가 및 매매 이력을 조회합니다.
+    """건물 실거래가와 매매 이력을 조회합니다.
 
     사용 시점:
-    - 실거래가, 매매 이력, 최근 거래 사례를 직접 묻는 질문
-    - 마지막 거래 시점, 마지막 거래 가격, 주변 최근 거래 사례처럼 거래 자체가 핵심인 질문
+    - 실거래가, 매매 이력, 최근 거래 사례
+    - 마지막 거래 시점·가격, 주변 최근 거래 사례처럼 거래 자체가 핵심인 질문
 
-    사용 금지에 가까운 경우:
-    - 단순 예상 가격 질문
-    - 건물 소개, 입지 평가, 상권 분석 질문
-    - 투자 판단 질문이더라도 거래/실거래가를 직접 묻지 않은 경우
-    - `get_building_price`만으로 답할 수 있는 가격 추정 질문
+    지양:
+    - 단순 예상 가격
+    - 건물 소개, 입지 평가, 상권 분석
+    - 거래/실거래가를 직접 묻지 않은 투자 판단
+    - `get_building_price`만으로 답할 수 있는 가격 추정
 
     조회 방식:
-    - 주소 기반: `sigungu_code + bjdong_code + bun (+ ji)`
-    - 좌표 기반: `lat + lng + radius_meters`
+    - 주소: `sigungu_code + bjdong_code + bun (+ ji)`
+    - 좌표: `lat + lng + radius_meters`
 
     반환:
-    - `query`: 실제 조회 조건
-    - `count`: 반환 거래 수
-    - `transactions`: 거래 목록. 거래금액, 거래일, 주소, 건물명, 좌표, 매칭 신뢰도 등이 포함됩니다.
+    - `query`: 조회 조건
+    - `count`: 거래 수
+    - `transactions`: 거래 목록
     """
     limit = max(1, min(limit, 100))
     radius_meters = max(1, min(radius_meters, 5000))

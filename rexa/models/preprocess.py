@@ -41,8 +41,8 @@ class PreprocessResult(BaseModel):
         default="",
         description="query_type 판단 이유"
     )
-    addresses: list[AddressObject] = Field(default_factory=list, description="검색된 모든 장소/주소 결과들")
-    commercial_areas: list[CommercialAreaAlias] = Field(default_factory=list, description="비공식 상권명 alias 매칭 결과")
+    addresses: list[AddressObject] = Field(default_factory=list, description="검색된 장소/주소")
+    commercial_areas: list[CommercialAreaAlias] = Field(default_factory=list, description="매칭된 상권 alias")
 
     @property
     def route(self) -> Literal["in_domain", "fallback"]:
@@ -78,52 +78,45 @@ class PreprocessResult(BaseModel):
 class PreprocessCandidates(BaseModel):
     query_type: QueryType = Field(
         description=(
-            "A는 특정 주소, 건물, 지역, 매물, 상권에 대한 조회/사실 전달이 중심인 질문이다. "
-            "명시된 데이터, 지표, 기간, 조건을 기준으로 비교, 정렬, 순위화, 선별하는 질문도 A다. "
-            "벡터 검색이나 저장된 데이터에서 근거를 찾아 답할 수 있으면 우선 A를 검토한다. "
-            "QA 기준상 상권 비교, 업종 적합도, 매물 1차 검토, 적정가 참고, 투자 우선순위, 추천/점수화 같은 "
-            "분석형 정식답변도 A에 포함한다. "
-            "B는 generic_real_estate_qa 로 처리할 일반 부동산 개념, 용어, 원리 설명 질문이다. "
-            "특히 아파트, 전세, 월세, 빌라, 오피스텔, 주택 같은 주거 부동산 일반 질문은 기본적으로 B다. "
-            "주거 부동산의 시세 일반론, 전세가율, 시장 분위기, 제도 설명, 투자 일반론처럼 "
-            "직접 조회 범위 밖이지만 일반 상식 수준으로 답할 수 있는 질문도 B다. "
-            "C는 조회는 가능해도 최종 답이 해석, 평가, 추천, 가격판단, 투자판단, 권리판단처럼 "
-            "규범적이거나 책임이 따르는 최종 판단이 필요한 질문이다. "
-            "다만 QA 기준에서 C는 세무, 대출/LTV, 권리관계, 명도, 인허가, 위반건축물, "
-            "재건축/재개발 수익, 감정평가·KB시세처럼 고위험이거나 공적 판단이 필요한 질문에 우선 적용한다. "
-            "D는 부동산 범위 밖 질문이다. "
-            "우선순위는 D > C > A > B 이다."
+            "A: 주소·건물·지역·매물·상권 조회 중심 질문. 비교·정렬·순위·선별과 "
+            "상권 비교, 업종 적합도, 매물 1차 검토, 적정가 참고, 투자 우선순위, 추천/점수화 같은 "
+            "분석형 정식답변도 포함한다. "
+            "B: generic_real_estate_qa 로 처리할 일반 부동산 개념·용어·원리 설명 질문. "
+            "아파트·전세·월세·빌라·오피스텔·주택 같은 주거 일반 질문과, "
+            "직접 조회 범위 밖이지만 일반 상식으로 설명 가능한 주거 시세 일반론·전세가율·제도 설명·투자 일반론을 포함한다. "
+            "C: 조회는 가능해도 최종 답이 해석·평가·추천·가격판단·투자판단·권리판단처럼 책임이 큰 질문. "
+            "특히 세무, 대출/LTV, 권리관계, 명도, 인허가, 위반건축물, 재건축/재개발 수익, 감정평가·KB시세가 여기에 해당한다. "
+            "D: 부동산 범위 밖 질문. 우선순위는 D > C > A > B."
         )
     )
 
     reason: str = Field(
         default="",
         description=(
-            "query_type을 그렇게 판단한 짧은 이유. "
+            "분류 이유를 짧게 적는다. "
             "예: '강남역 상권 분석처럼 특정 지역 조회가 중심이라 A', "
-            "'5년 생존율 기준으로 안정적인 동 비교처럼 저장된 지표 기반 비교라 A', "
             "'월세 정의를 묻는 개념 질문이라 B', "
-            "'가격이 적정한지 판단을 요구해 C', "
-            "'부동산과 무관한 질문이라 D'."
+            "'가격 적정성 판단 요구라 C', "
+            "'부동산과 무관해 D'."
         )
     )
 
     addresses: list[str] = Field(
         default_factory=list,
         description=(
-            "주소 검색 툴로 바로 조회할 수 있는 표현 목록. "
+            "주소 검색 툴로 바로 조회할 표현 목록. "
             "지번 주소, 도로명 주소, 행정구, 행정동, 법정동 이름을 넣는다. "
-            "예: '세종로 1-1', '강남대로 123', '강남구', '역삼동', '청담동'. "
-            "고유명사 건물명이나 지하철역 이름은 넣지 말고 keywords로 보낸다."
+            "예: '세종로 1-1', '강남대로 123', '강남구', '역삼동'. "
+            "건물명·역명 같은 고유명사는 keywords로 보낸다."
         )
     )
     keywords: list[str] = Field(
         default_factory=list,
         description=(
             "키워드 검색이 필요한 고유명사 장소 목록. "
-            "건물명, 지하철역, 랜드마크, 상호명처럼 이름으로 알려진 장소를 넣는다. "
+            "건물명, 역명, 랜드마크, 상호명처럼 이름으로 알려진 장소를 넣는다. "
             "예: '경복궁', '강남역', '코엑스', '롯데타워'. "
-            "업종명이나 일반 명사(카페, 식당, 아파트, 상가)는 넣지 않는다."
+            "업종명이나 일반명사(카페, 식당, 아파트, 상가)는 넣지 않는다."
         )
     )
 
