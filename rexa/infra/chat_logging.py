@@ -24,8 +24,10 @@ log = logging.getLogger("rexa")
 CHAT_LOG_TABLE = os.getenv("CHAT_LOG_TABLE", "chat_logs").strip() or "chat_logs"
 CHAT_LOG_USER_HASH_SALT = os.getenv("CHAT_LOG_USER_HASH_SALT", "")
 CHAT_LOG_USER_ID_ENC_KEY = os.getenv("CHAT_LOG_USER_ID_ENC_KEY", "")
+CHAT_USERS_TABLE = os.getenv("CHAT_USERS_TABLE", "chat_users").strip() or "chat_users"
 
 _TABLE_READY = False
+_CHAT_USERS_TABLE_READY = False
 
 
 def json_dumps(payload: Any) -> str:
@@ -307,6 +309,39 @@ def ensure_chat_log_table() -> None:
     _TABLE_READY = True
 
 
+def ensure_chat_users_table() -> None:
+    """user_key당 1행만 유지하는 유저 레지스트리. 브로드캐스트 배치가 chat_logs 전체를
+    스캔하지 않고 이 작은 테이블만 읽도록 하기 위함(메시지 저장 시마다 upsert)."""
+    global _CHAT_USERS_TABLE_READY
+    if _CHAT_USERS_TABLE_READY:
+        return
+
+    run_sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {CHAT_USERS_TABLE} (
+            user_key VARCHAR(128) PRIMARY KEY,
+            user_id_enc TEXT NOT NULL,
+            first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        """
+    )
+    _CHAT_USERS_TABLE_READY = True
+
+
+def upsert_chat_user(user_key: str | None, user_id_enc: str | None) -> None:
+    if not user_key or not user_id_enc:
+        return
+    ensure_chat_users_table()
+    query = f"""
+    INSERT INTO {CHAT_USERS_TABLE} (user_key, user_id_enc, first_seen_at, last_seen_at)
+    VALUES ({_sql_literal(user_key)}, {_sql_literal(user_id_enc)}, NOW(), NOW())
+    ON CONFLICT (user_key) DO UPDATE
+    SET user_id_enc = EXCLUDED.user_id_enc, last_seen_at = NOW();
+    """
+    run_sql(query)
+
+
 def _sql_literal(value: Any) -> str:
     if value is None:
         return "NULL"
@@ -379,6 +414,11 @@ def save_chat_log(result: PipelineRunResult) -> None:
     ON CONFLICT (request_id) DO NOTHING;
     """
     run_sql(query)
+
+    try:
+        upsert_chat_user(hash_user_id(result.user_id), user_id_enc)
+    except Exception as exc:
+        log.warning("[로그] chat_users upsert 실패 | request_id=%s | %s", result.request_id, exc)
 
 
 def save_chat_log_best_effort(result: PipelineRunResult) -> None:
