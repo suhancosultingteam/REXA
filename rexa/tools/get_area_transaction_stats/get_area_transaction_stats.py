@@ -63,7 +63,7 @@ def get_area_transaction_stats(
     - "이 근처 거래 시세 어때?", "강남역 근처 평당가 알려줘" 같은 주변 시세 질문
 
     반환:
-    - `query`: 중심 좌표와 조회 반경
+    - `query`: 중심 좌표와 반경
     - `transaction_count`: 유효 거래 수
     - `stats`: 거래금액, 면적, 평당가 통계
     - `transactions`: 샘플 거래 목록

@@ -25,19 +25,18 @@ def get_building_registry(
     ji: str = "",
     mgm_bldrgst_pk: str | None = None,
 ) -> GetBuildingRegistryResultDto:
-    """
-    특정 건물의 건축물대장 정보를 조회합니다.
+    """특정 건물의 건축물대장 정보를 조회합니다.
 
     사용 시점:
-    - 특정 건물의 용도, 연면적, 대지면적, 층수, 구조, 준공연도 등을 묻는 질문
-    - 건물 매입 검토 전 기초 건물 정보를 확인할 때
+    - 용도, 연면적, 대지면적, 층수, 구조, 준공연도 등을 묻는 질문
+    - 매입 검토 전 기초 건물 정보 확인
 
     조회 방식:
-    - 주소 기반: `sigungu_code + bjdong_code + bun + ji`
-    - 관리 PK 보조 조건: `mgm_bldrgst_pk`
+    - 주소: `sigungu_code + bjdong_code + bun + ji`
+    - 보조 조건: `mgm_bldrgst_pk`
 
     반환:
-    - `building`: 조회된 단일 건물. 건물명, 주소, 용도, 구조, 면적, 층수, 준공연도 등이 포함됩니다.
+    - `building`: 조회된 단일 건물
     """
     mgm_bldrgst_pk_value = (mgm_bldrgst_pk or "").strip()
     bun_value = bun

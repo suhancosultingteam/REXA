@@ -57,23 +57,23 @@ def get_suhan_property(
     min_stn_dist_min: float | None = None,
     min_stn_dist_max: float | None = None,
 ) -> GetSuhanPropertyResultDto:
-    """서안개발 자체 매물 데이터를 검색합니다.
+    """서안개발 매매 매물을 검색합니다.
 
     사용 시점:
-    - "매물 보여줘", "근처 매물 있어?", "이 주소 매물 알려줘" 같은 매물 조회 질문
+    - "매물 보여줘", "근처 매물 있어?", "이 주소 매물 알려줘" 같은 매물 질문
 
     조회 방식:
-    - 좌표 반경 검색: `lat + lng (+ radius_m)`
-    - 지번 주소 검색: `sigungu_code + bjdong_code (+ bun + ji)`
-    - 코드 검색: `code`
+    - 좌표 반경: `lat + lng (+ radius_m)`
+    - 지번 주소: `sigungu_code + bjdong_code (+ bun + ji)`
+    - 코드: `code`
 
     추가 필터:
-    - 면적, 가격, 역거리 조건을 함께 줄 수 있습니다.
+    - 면적, 가격, 역거리
 
     반환:
-    - `query`: 실제 검색 모드와 사용된 조건
+    - `query`: 조회 모드와 조건
     - `count`: 반환 매물 수
-    - `listings`: 매물 목록. 코드, 주소, 가격, 면적, 거리, 역 정보가 포함됩니다.
+    - `listings`: 매물 목록
     """
     log.info(
         f"[툴][get_suhan_property] 시작 ▶ "

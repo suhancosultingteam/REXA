@@ -10,13 +10,26 @@ from rexa.tools.search_commercial_area.search_commercial_area_input_dto import S
 from rexa.tools.search_commercial_area.search_commercial_area_result_dto import SearchCommercialAreaResultDto
 
 BOS_SERVER_BASE_URL = os.getenv("BOS_SERVER_BASE_URL", "http://localhost:10000").rstrip("/")
-COMMERCIAL_AREA_TOP_K = int(os.getenv("COMMERCIAL_AREA_TOP_K", "5"))
+COMMERCIAL_AREA_TOP_K = int(os.getenv("COMMERCIAL_AREA_TOP_K", "3"))
+COMMERCIAL_AREA_MAX_QUERIES = int(os.getenv("COMMERCIAL_AREA_MAX_QUERIES", "3"))
+_COMMERCIAL_AREA_TOP_K_CAP = 3
+_COMMERCIAL_AREA_MAX_QUERIES_CAP = 3
 COMMERCIAL_AREA_TIMEOUT_SECONDS = float(os.getenv("COMMERCIAL_AREA_TIMEOUT_SECONDS", "20"))
 log = setup_logger()
 
 
 def _build_search_queries(queries: list[str]) -> list[str]:
-    return [q.strip() for q in queries if q.strip()]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        value = query.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+        if len(normalized) >= min(max(1, COMMERCIAL_AREA_MAX_QUERIES), _COMMERCIAL_AREA_MAX_QUERIES_CAP):
+            break
+    return normalized
 
 
 def _search_chunks(query: str, top_k: int, sigungu_code: str) -> list[dict]:
@@ -32,21 +45,18 @@ def _search_chunks(query: str, top_k: int, sigungu_code: str) -> list[dict]:
 
 @tool(args_schema=SearchCommercialAreaInputDto)
 def search_commercial_area(sigungu_code: str, queries: list[str]) -> SearchCommercialAreaResultDto:
-    """구 단위 상권 분석 보고서를 벡터 검색으로 조회합니다.
+    """구 단위 상권 분석 보고서를 벡터 검색합니다.
 
     사용 시점:
     - 상권, 유동인구, 업종 분포, 생존률, 입지 평가 질문
-    - 주소가 구 단위여도 사용할 수 있습니다
+    - 주소가 구 단위인 경우
 
     파라미터:
     - `sigungu_code`: 조회 대상 구의 5자리 시군구 코드
     - `queries`: 보고서 검색용 자연어 쿼리 배열
 
     반환:
-    - `sigungu_code`: 실제 조회한 구 코드
-    - `queries`: 정제된 검색 쿼리
-    - `count`: 매칭된 청크 수
-    - `chunks`: 검색된 상권 보고서 청크 목록
+    - `sigungu_code`, `queries`, `count`, `chunks`
     """
     log.info(f"[툴][search_commercial_area] 시작 ▶ sigungu_code={sigungu_code!r} | queries={queries} | BOS_URL={BOS_SERVER_BASE_URL}")
 
@@ -66,7 +76,7 @@ def search_commercial_area(sigungu_code: str, queries: list[str]) -> SearchComme
 
     chunks: list[SearchCommercialAreaChunkDto] = []
     seen_chunk_uuids: set[str] = set()
-    top_k = max(1, COMMERCIAL_AREA_TOP_K)
+    top_k = min(max(1, COMMERCIAL_AREA_TOP_K), _COMMERCIAL_AREA_TOP_K_CAP)
 
     try:
         for query in search_queries:
