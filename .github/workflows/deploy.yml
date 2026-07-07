@@ -49,12 +49,11 @@ jobs:
           CHAT_LOG_USER_ID_ENC_KEY=${{ secrets.CHAT_LOG_USER_ID_ENC_KEY }}
 
           KAKAO_BOT_ID=${{ secrets.KAKAO_BOT_ID }}
-          KAKAO_BOT_REST_API_KEY=${{ secrets.KAKAO_BOT_REST_API_KEY }}
-          KAKAO_EVENT_NAME=${{ secrets.KAKAO_EVENT_NAME }}
-          BROADCAST_ENABLED=${{ secrets.BROADCAST_ENABLED }}
+          KAKAO_BOT_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}          
+          BROADCAST_ENABLED=true
 
           BOS_SERVER_BASE_URL=http://52.78.92.214/api
-          COMMERCIAL_AREA_TOP_K=5
+          COMMERCIAL_AREA_TOP_K=3
           COMMERCIAL_AREA_TIMEOUT_SECONDS=20
 
           REDIS_URL=localhost:6379

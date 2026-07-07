@@ -12,8 +12,6 @@ from rexa.tools.search_commercial_area.search_commercial_area_result_dto import 
 BOS_SERVER_BASE_URL = os.getenv("BOS_SERVER_BASE_URL", "http://localhost:10000").rstrip("/")
 COMMERCIAL_AREA_TOP_K = int(os.getenv("COMMERCIAL_AREA_TOP_K", "3"))
 COMMERCIAL_AREA_MAX_QUERIES = int(os.getenv("COMMERCIAL_AREA_MAX_QUERIES", "3"))
-_COMMERCIAL_AREA_TOP_K_CAP = 3
-_COMMERCIAL_AREA_MAX_QUERIES_CAP = 3
 COMMERCIAL_AREA_TIMEOUT_SECONDS = float(os.getenv("COMMERCIAL_AREA_TIMEOUT_SECONDS", "20"))
 log = setup_logger()
 
@@ -68,7 +66,7 @@ def _build_search_queries(queries: list[str]) -> list[str]:
         filtered.append(query)
 
     source = filtered or normalized_all
-    limit = min(max(1, COMMERCIAL_AREA_MAX_QUERIES), _COMMERCIAL_AREA_MAX_QUERIES_CAP)
+    limit = max(1, COMMERCIAL_AREA_MAX_QUERIES)
     return source[:limit]
 
 
@@ -147,7 +145,7 @@ def search_commercial_area(sigungu_code: str, queries: list[str]) -> SearchComme
 
     chunks: list[SearchCommercialAreaChunkDto] = []
     seen_chunk_uuids: set[str] = set()
-    top_k = min(max(1, COMMERCIAL_AREA_TOP_K), _COMMERCIAL_AREA_TOP_K_CAP)
+    top_k = max(1, COMMERCIAL_AREA_TOP_K)
 
     try:
         for query in search_queries:
