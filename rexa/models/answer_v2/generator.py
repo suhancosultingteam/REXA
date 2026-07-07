@@ -28,7 +28,6 @@ _SERVICE_GUIDE_MESSAGE = (
     "주소나 장소가 확인되면 건물 정보, 공시지가, 실거래가, 상권 분석, 추정가 같은 데이터는 이어서 바로 확인해드릴 수 있어요."
 )
 
-_SEOUL_ONLY_TOOLS = {"get_building_registry", "get_building_price", "search_commercial_area"}
 SEOUL_ONLY_NOTICE = "렉사는 현재 서울 지역 분석만 지원합니다."
 
 
@@ -36,14 +35,19 @@ def _is_seoul_sigungu_code(sigungu_code: str) -> bool:
     return sigungu_code.startswith("11") and len(sigungu_code) == 5
 
 
-def _needs_seoul_only_notice(retrieval_result: dict, retrieval: dict) -> bool:
-    if not any(tool_name in retrieval for tool_name in _SEOUL_ONLY_TOOLS):
-        return False
+def _has_non_seoul_address(retrieval_result: dict) -> bool:
     addresses = retrieval_result.get("addresses") or []
     sigungu_codes = [str(addr.get("sigungu_code") or "") for addr in addresses if addr.get("sigungu_code")]
     if not sigungu_codes:
         return False
     return not any(_is_seoul_sigungu_code(code) for code in sigungu_codes)
+
+
+def _needs_seoul_only_notice(retrieval_result: dict, retrieval: dict) -> bool:
+    query_type = _resolve_query_type(retrieval_result)
+    if query_type not in {"A", "C"}:
+        return False
+    return _has_non_seoul_address(retrieval_result)
 
 _EMOJI_PATTERN = re.compile(
     "["
@@ -124,11 +128,19 @@ def generate_answer_with_metrics(
 
     if not retrieval and query_type != 'D':
         log.info("[결과V2] 툴 미호출 → fallback 응답")
-        answer_text = (
-            "지금 질문만으로는 조회할 위치를 정확히 잡기 어려워요. "
-            "예를 들면 `역삼1동`, `강남역`, `테헤란로 123`처럼 장소나 주소를 같이 보내주시면 바로 확인해볼게요.\n\n"
-            f"{_SERVICE_GUIDE_MESSAGE}"
-        )
+        if needs_seoul_only_notice:
+            answer_text = (
+                "현재 확인 가능한 데이터가 없습니다. "
+                f"{SEOUL_ONLY_NOTICE}\n\n"
+                "서울 지역의 주소나 장소를 알려주시면 그 범위 안에서 바로 확인해드릴게요.\n\n"
+                f"{_SERVICE_GUIDE_MESSAGE}"
+            )
+        else:
+            answer_text = (
+                "지금 질문만으로는 조회할 위치를 정확히 잡기 어려워요. "
+                "예를 들면 `역삼1동`, `강남역`, `테헤란로 123`처럼 장소나 주소를 같이 보내주시면 바로 확인해볼게요.\n\n"
+                f"{_SERVICE_GUIDE_MESSAGE}"
+            )
         metrics = LayerMetrics(
             latency_ms=int((time.perf_counter() - started_at) * 1000),
             timing_breakdown={"fallback_response_ms": int((time.perf_counter() - started_at) * 1000)},
