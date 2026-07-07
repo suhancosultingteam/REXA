@@ -320,22 +320,10 @@ def ensure_chat_log_table() -> None:
 
 
 def ensure_chat_users_table() -> None:
-    """user_key당 1행만 유지하는 유저 레지스트리. 브로드캐스트 배치가 chat_logs 전체를
-    스캔하지 않고 이 작은 테이블만 읽도록 하기 위함(메시지 저장 시마다 upsert)."""
+    """chat_users 스키마는 애플리케이션이 아니라 운영 DDL로 관리한다."""
     global _CHAT_USERS_TABLE_READY
     if _CHAT_USERS_TABLE_READY:
         return
-
-    run_sql(
-        f"""
-        CREATE TABLE IF NOT EXISTS {CHAT_USERS_TABLE} (
-            user_key VARCHAR(128) PRIMARY KEY,
-            user_id_enc TEXT NOT NULL,
-            first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        """
-    )
     _CHAT_USERS_TABLE_READY = True
 
 

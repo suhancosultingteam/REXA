@@ -44,28 +44,6 @@ def ensure_broadcast_tables() -> None:
         return
 
     ensure_chat_users_table()
-    run_sql(
-        f"""
-        CREATE TABLE IF NOT EXISTS {BROADCAST_SEND_LOG_TABLE} (
-            id BIGSERIAL PRIMARY KEY,
-            batch_id UUID NOT NULL,
-            run_date DATE NOT NULL,
-            event_name VARCHAR(100) NOT NULL,
-            user_key VARCHAR(128) NOT NULL,
-            chunk_index INTEGER NOT NULL,
-            http_status INTEGER,
-            task_id VARCHAR(100),
-            status VARCHAR(20) NOT NULL,
-            error_message TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_{BROADCAST_SEND_LOG_TABLE}_sent_once
-            ON {BROADCAST_SEND_LOG_TABLE} (run_date, event_name, user_key) WHERE status = 'SENT';
-        CREATE INDEX IF NOT EXISTS idx_{BROADCAST_SEND_LOG_TABLE}_batch
-            ON {BROADCAST_SEND_LOG_TABLE} (batch_id);
-        """
-    )
     _BROADCAST_TABLES_READY = True
 
 
