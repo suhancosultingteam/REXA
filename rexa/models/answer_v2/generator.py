@@ -49,6 +49,14 @@ def _needs_seoul_only_notice(retrieval_result: dict, retrieval: dict) -> bool:
         return False
     return _has_non_seoul_address(retrieval_result)
 
+
+def _has_successful_retrieval(retrieval: dict) -> bool:
+    for results in retrieval.values():
+        for result in results or []:
+            if isinstance(result, dict) and "error" not in result:
+                return True
+    return False
+
 _EMOJI_PATTERN = re.compile(
     "["
     "\U0001F300-\U0001F5FF"
@@ -125,6 +133,22 @@ def generate_answer_with_metrics(
     log.debug(f"[결과V2] 조회된 툴: {list(retrieval.keys())}")
 
     needs_seoul_only_notice = _needs_seoul_only_notice(retrieval_result, retrieval)
+    has_successful_retrieval = _has_successful_retrieval(retrieval)
+
+    if needs_seoul_only_notice and not has_successful_retrieval:
+        log.info("[결과V2] 서울 외 주소 + 성공 조회 없음 → 범위 안내 응답")
+        answer_text = (
+            "현재 확인 가능한 데이터가 없습니다. "
+            f"{SEOUL_ONLY_NOTICE}\n\n"
+            "서울 외 지역은 주소를 더 구체적으로 보내주셔도 현재는 조회가 어렵습니다. "
+            "서울 지역의 주소나 장소를 알려주시면 그 범위 안에서 바로 확인해드릴게요."
+        )
+        metrics = LayerMetrics(
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            timing_breakdown={"seoul_only_response_ms": int((time.perf_counter() - started_at) * 1000)},
+        )
+        log_latency(log, "[결과V2]", metrics.timing_payload())
+        return answer_text, metrics
 
     if not retrieval and query_type != 'D':
         log.info("[결과V2] 툴 미호출 → fallback 응답")
