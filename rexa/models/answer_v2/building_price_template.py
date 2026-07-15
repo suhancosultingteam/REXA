@@ -3,7 +3,7 @@ import re
 from rexa.tools._utils import parse_float, parse_int
 
 _PYEONG_SQM = 3.305785
-_NO_DATA = "정보 없음"
+_NO_DATA = "-"
 
 BUILDING_PRICE_TEMPLATE = """입력하신 주소 기준으로 확인 가능한 정보를 간단히 정리해드릴게요.
 ※ 본 내용은 건축물대장, 공시지가, 실거래 및 주변 시세 데이터를 바탕으로 한 참고용 1차 검토입니다.
