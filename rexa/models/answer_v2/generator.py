@@ -56,6 +56,7 @@ def _has_successful_retrieval(retrieval: dict) -> bool:
                 return True
     return False
 
+
 _EMOJI_PATTERN = re.compile(
     "["
     "\U0001F300-\U0001F5FF"
