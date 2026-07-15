@@ -94,13 +94,13 @@ def _build_summary_comment(price_result: dict, retrieval: dict) -> str:
 
 
 def try_build_building_price_answer(origin: str, retrieval: dict) -> str | None:
-    price_result = _first_valid_result(retrieval.get("get_building_price"))
-    if price_result is None:
+    registry_result = _first_valid_result(retrieval.get("get_building_registry"))
+    if registry_result is None:
         return None
-
-    target_building = price_result.get("target_building") or {}
-    registry_result = _first_valid_result(retrieval.get("get_building_registry")) or {}
     registry_building = registry_result.get("building") or {}
+
+    price_result = _first_valid_result(retrieval.get("get_building_price")) or {}
+    target_building = price_result.get("target_building") or {}
 
     address = (
         registry_building.get("new_plat_plc")

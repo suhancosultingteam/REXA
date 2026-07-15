@@ -172,7 +172,7 @@ def generate_answer_with_metrics(
         log_latency(log, "[결과V2]", metrics.timing_payload())
         return answer_text, metrics
 
-    if query_type == "A" and retrieval.get("get_building_price"):
+    if query_type == "A" and retrieval.get("get_building_registry"):
         template_answer = try_build_building_price_answer(origin, retrieval)
         if template_answer is not None:
             log.info("[결과V2] 건물가격 템플릿 응답 사용")
